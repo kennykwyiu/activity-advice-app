@@ -18,7 +18,11 @@ import org.springframework.stereotype.Service;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpSession;
 
+import java.util.concurrent.TimeUnit;
+
 import static com.hmdp.entity.ConstantEnum.*;
+import static com.hmdp.utils.RedisConstants.LOGIN_CODE_KEY;
+import static com.hmdp.utils.RedisConstants.LOGIN_CODE_TTL;
 import static com.hmdp.utils.SystemConstants.*;
 
 /**
@@ -43,8 +47,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
         // if valid, generate code
         String code = RandomUtil.randomNumbers(6);
-        // save the code in the session
-        session.setAttribute(VERIFY_CODE, code);
+        // save the code in the session -> redis // set key value ex 120
+        stringRedisTemplate.opsForValue().set(LOGIN_CODE_KEY + phone, code, LOGIN_CODE_TTL, TimeUnit.MINUTES);
         // send the code
         log.debug("send the message code successfully, code: {}", code);
         return Result.ok();
@@ -59,6 +63,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             return Result.fail("not valid phone no.");
         }
         // validate verify code
+        // TODO: change to redis
         Object cacheCode = session.getAttribute(VERIFY_CODE);
         String code = loginForm.getCode();
         if (cacheCode == null || !cacheCode.toString().equals(code)) {
@@ -75,7 +80,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
            user = createUserWithPhone(phone);
         }
         // save user info into session
+        // TODO: change to save into Redis
+        // TODO: generate token for uid
+        // TODO: mapping User to Hash
+        // TODO: save into Redis
+
         session.setAttribute(USER, BeanUtil.copyProperties(user, UserDTO.class));
+        // TODO: return token
         return Result.ok();
     }
 

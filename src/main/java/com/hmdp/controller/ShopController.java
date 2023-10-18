@@ -26,19 +26,19 @@ public class ShopController {
     public IShopService shopService;
 
     /**
-     * 根据id查询商铺信息
-     * @param id 商铺id
-     * @return 商铺详情数据
+     * Query shop information by id
+     * @param id shop id
+     * @return shop details data
      */
     @GetMapping("/{id}")
     public Result queryShopById(@PathVariable("id") Long id) {
-        return Result.ok(shopService.getById(id));
+        return shopService.queryById(id);
     }
 
     /**
-     * 新增商铺信息
-     * @param shop 商铺数据
-     * @return 商铺id
+     * Add shop information
+     * @param shop shop data
+     * @return shop id
      */
     @PostMapping
     public Result saveShop(@RequestBody Shop shop) {

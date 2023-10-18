@@ -1,6 +1,8 @@
 package com.hmdp.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.bean.copier.CopyOptions;
+import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.RandomUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.LoginFormDTO;
@@ -18,11 +20,12 @@ import org.springframework.stereotype.Service;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpSession;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static com.hmdp.entity.ConstantEnum.*;
-import static com.hmdp.utils.RedisConstants.LOGIN_CODE_KEY;
-import static com.hmdp.utils.RedisConstants.LOGIN_CODE_TTL;
+import static com.hmdp.utils.RedisConstants.*;
 import static com.hmdp.utils.SystemConstants.*;
 
 /**
@@ -63,10 +66,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             return Result.fail("not valid phone no.");
         }
         // validate verify code
-        // TODO: change to redis
-        Object cacheCode = session.getAttribute(VERIFY_CODE);
+        // change to redis
+//        Object cacheCode = session.getAttribute(VERIFY_CODE);
+        String cacheCode = stringRedisTemplate.opsForValue().get(LOGIN_CODE_KEY + phone);
         String code = loginForm.getCode();
-        if (cacheCode == null || !cacheCode.toString().equals(code)) {
+        if (cacheCode == null || !cacheCode.equals(code)) {
             // if not valid, return failure
             return Result.fail("wrong verify code");
         }
@@ -80,14 +84,22 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
            user = createUserWithPhone(phone);
         }
         // save user info into session
-        // TODO: change to save into Redis
-        // TODO: generate token for uid
-        // TODO: mapping User to Hash
-        // TODO: save into Redis
-
-        session.setAttribute(USER, BeanUtil.copyProperties(user, UserDTO.class));
-        // TODO: return token
-        return Result.ok();
+        // change to save into Redis
+        // generate token for uid
+        String token = UUID.randomUUID().toString(true);
+        // mapping User to Hash
+        UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
+        Map<String, Object> userMap = BeanUtil.beanToMap(userDTO, new HashMap<>(),
+                CopyOptions.create()
+                .setIgnoreNullValue(true)
+                .setFieldValueEditor((fieldName, fieldValue) -> fieldValue.toString()));
+        // save into Redis
+        String tokenKey = LOGIN_USER_KEY + token;
+        stringRedisTemplate.opsForHash(). putAll(tokenKey, userMap);
+        // set the token expired time
+        stringRedisTemplate.expire(tokenKey, LOGIN_USER_TTL, TimeUnit.MINUTES);
+        // return token
+        return Result.ok(token);
     }
 
     private User createUserWithPhone(String phone) {

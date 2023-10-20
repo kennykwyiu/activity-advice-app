@@ -2,19 +2,24 @@ package com.hmdp.service.impl;
 
 import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.Shop;
 import com.hmdp.mapper.ShopMapper;
 import com.hmdp.service.IShopService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.utils.RedisData;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 
+import java.time.LocalDateTime;
 import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static com.hmdp.utils.RedisConstants.*;
@@ -37,12 +42,60 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         // Shop shop = queryWithSolvingCachePenetration(id);
 
         // Mutex lock for solving cache breakdown
-        Shop shop = queryWithMutexLock(id);
+        // Shop shop = queryWithMutexLock(id);
+
+        // logical expired for solving cache breakdown
+        Shop shop = queryWithLogicalExpired(id);
+
         if (shop == null) {
             return Result.fail("Shop is not exist");
         }
         // 7. return
         return Result.ok(shop);
+    }
+
+    private static final ExecutorService CACHE_REBUILD_EXECUTOR = Executors.newFixedThreadPool(10);
+
+    public Shop queryWithLogicalExpired(Long id) {
+        // 1. check shop info from Redis
+        String key = CACHE_SHOP_KEY + id;
+        String shopJson = stringRedisTemplate.opsForValue().get(key);
+        // 2. validate is it exist
+        if (StrUtil.isBlank(shopJson)) {
+            // 3. if not exist, return null
+            return null;
+        }
+        // 4. if exist, need to deserialize json to an object
+        RedisData redisData = JSONUtil.toBean(shopJson, RedisData.class);
+        Shop shop = JSONUtil.toBean((JSONObject) redisData.getData(), Shop.class);
+        LocalDateTime expireTime = redisData.getExpireTime();
+        // 5. validate is it expired
+        if (expireTime.isAfter(LocalDateTime.now())) {
+            // 5.1 if not expired, return shop info
+            return shop;
+        }
+        // 5.2 if expired, need to cache re-build
+        // 6 cache re-build
+        // 6.1 get the mutex lock
+        String lockKey = LOCK_SHOP_KEY + id;
+        boolean isLock = tryLock(lockKey);
+        // 6.2 validate can it get the mutex lock
+        if (isLock) {
+            // 6.3 if get the lock, start new thread to implement cache re-build
+            CACHE_REBUILD_EXECUTOR.submit(() -> {
+                try {
+                    // re-build the cache
+                    this.saveShopToRedis(id, 20L);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                } finally {
+                    unlock(lockKey);
+                }
+            });
+        }
+        // 6.4 if cannot get lock, return expired shop info
+        // 7. return
+        return shop;
     }
 
     public Shop queryWithMutexLock(Long id) {
@@ -133,6 +186,19 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
     private void unlock(String key) {
         stringRedisTemplate.delete(key);
+    }
+
+    public void saveShopToRedis(Long id, Long expireSeconds) throws InterruptedException {
+        // 1. get Shop info from Database
+        Shop shop = getById(id);
+        Thread.sleep(200);
+        // 2. encapsulate expired time
+        RedisData redisData = RedisData.builder()
+                .data(shop)
+                .expireTime(LocalDateTime.now().plusSeconds(expireSeconds))
+                .build();
+        // 3. write it into Redis
+        stringRedisTemplate.opsForValue().set(CACHE_SHOP_KEY + id, JSONUtil.toJsonStr(redisData));
     }
 
     @Override

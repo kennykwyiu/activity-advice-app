@@ -15,7 +15,7 @@ import java.util.List;
 
 /**
  * <p>
- *  服务实现类
+ *  service implementation class
  * </p>
  *
 *
@@ -28,23 +28,24 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
 
     @Override
     public Result queryVoucherOfShop(Long shopId) {
-        // 查询优惠券信息
+        // Check Coupon Information
         List<Voucher> vouchers = getBaseMapper().queryVoucherOfShop(shopId);
-        // 返回结果
+        // Return results
         return Result.ok(vouchers);
     }
 
     @Override
     @Transactional
     public void addSeckillVoucher(Voucher voucher) {
-        // 保存优惠券
+        // Save Coupon
         save(voucher);
-        // 保存秒杀信息
-        SeckillVoucher seckillVoucher = new SeckillVoucher();
-        seckillVoucher.setVoucherId(voucher.getId());
-        seckillVoucher.setStock(voucher.getStock());
-        seckillVoucher.setBeginTime(voucher.getBeginTime());
-        seckillVoucher.setEndTime(voucher.getEndTime());
+        // Save Second kill Information
+        SeckillVoucher seckillVoucher = SeckillVoucher.builder()
+                .voucherId(voucher.getId())
+                .stock(voucher.getStock())
+                .beginTime(voucher.getBeginTime())
+                .endTime(voucher.getEndTime())
+                .build();
         seckillVoucherService.save(seckillVoucher);
     }
 }

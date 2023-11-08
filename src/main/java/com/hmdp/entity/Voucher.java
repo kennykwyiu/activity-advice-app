@@ -72,13 +72,13 @@ public class Voucher implements Serializable {
     private LocalDateTime endTime;
 
     /**
-     * Established date
+     * Creation date
      */
     private LocalDateTime createTime;
 
 
     /**
-     * Updated time
+     * Update time
      */
     private LocalDateTime updateTime;
 

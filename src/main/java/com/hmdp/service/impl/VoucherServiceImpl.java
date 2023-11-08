@@ -26,6 +26,8 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
     @Resource
     private ISeckillVoucherService seckillVoucherService;
 
+
+
     @Override
     public Result queryVoucherOfShop(Long shopId) {
         // Check Coupon Information
@@ -48,4 +50,6 @@ public class VoucherServiceImpl extends ServiceImpl<VoucherMapper, Voucher> impl
                 .build();
         seckillVoucherService.save(seckillVoucher);
     }
+
+
 }

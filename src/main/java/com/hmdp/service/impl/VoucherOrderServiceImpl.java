@@ -9,6 +9,7 @@ import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
+import org.springframework.aop.framework.AopContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,10 +18,8 @@ import java.time.LocalDateTime;
 
 /**
  * <p>
- *  服务实现类
+ * 服务实现类
  * </p>
- *
-*
  */
 @Service
 public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, VoucherOrder> implements IVoucherOrderService {
@@ -32,7 +31,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private RedisIdWorker redisIdWorker;
 
     @Override
-    @Transactional
     public Result seckillVoucher(Long voucherId) {
         // 1. check voucher info
         SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
@@ -52,35 +50,51 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
         // 5. create order without duplicated users
         Long userId = UserHolder.getUser().getId();
-        // 5.1 check did user create order before with voucher
-        int count = query().eq("user_id", userId)
-                .eq("voucher_id", voucherId).count();
-        // 5.2 validate
-        if (count > 0) {
-            return Result.fail("User " + userId + " was bought before");
+
+        synchronized (userId.toString().intern()) {
+            // get the proxy object (transactional)
+            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
+            return proxy.createVoucherOrder(voucherId);
         }
+    }
 
-        // 6. deduct stock
-        boolean success = seckillVoucherService.update()
-                .setSql("stock = stock - 1") // set stock = stock - 1
-                .eq("voucher_id", voucherId)
-                .gt("stock", 0) // where id = ? and stock > 0
-                .update();
-        if (!success) {
-            return Result.fail("Not enough stock!");
+    @Transactional
+    public Result createVoucherOrder(Long voucherId) {
+
+        // 5. create order without duplicated users
+        Long userId = UserHolder.getUser().getId();
+
+        synchronized (userId.toString().intern()) {            // 5.1 check did user create order before with voucher
+            int count = query().eq("user_id", userId)
+                    .eq("voucher_id", voucherId).count();
+            // 5.2 validate
+            if (count > 0) {
+                return Result.fail("User " + userId + " was bought before");
+            }
+
+            // 6. deduct stock
+            boolean success = seckillVoucherService.update()
+                    .setSql("stock = stock - 1") // set stock = stock - 1
+                    .eq("voucher_id", voucherId)
+                    .gt("stock", 0) // where id = ? and stock > 0
+                    .update();
+            if (!success) {
+                return Result.fail("Not enough stock!");
+            }
+
+            // 7 create order
+            // 7.1 order ID
+            long orderId = redisIdWorker.nextId("order");
+            VoucherOrder voucherOrder = VoucherOrder.builder()
+                    .id(orderId)
+                    .userId(userId)
+                    .voucherId(voucherId)
+                    .build();
+            save(voucherOrder);
+
+            // 8. return orderId
+            return Result.ok(orderId);
+
         }
-
-        // 7 create order
-        // 7.1 order ID
-        long orderId = redisIdWorker.nextId("order");
-        VoucherOrder voucherOrder = VoucherOrder.builder()
-                .id(orderId)
-                .userId(userId)
-                .voucherId(voucherId)
-                .build();
-        save(voucherOrder);
-
-        // 8. return orderId
-        return Result.ok(orderId);
     }
 }

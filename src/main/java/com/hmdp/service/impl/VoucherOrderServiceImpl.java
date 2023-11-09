@@ -50,7 +50,17 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("Not enough stock!");
         }
 
-        // 5. deduct stock
+        // 5. create order without duplicated users
+        Long userId = UserHolder.getUser().getId();
+        // 5.1 check did user create order before with voucher
+        int count = query().eq("user_id", userId)
+                .eq("voucher_id", voucherId).count();
+        // 5.2 validate
+        if (count > 0) {
+            return Result.fail("User " + userId + " was bought before");
+        }
+
+        // 6. deduct stock
         boolean success = seckillVoucherService.update()
                 .setSql("stock = stock - 1") // set stock = stock - 1
                 .eq("voucher_id", voucherId)
@@ -60,13 +70,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("Not enough stock!");
         }
 
-        // 6. create order
-        // 6.1 order ID
+        // 7 create order
+        // 7.1 order ID
         long orderId = redisIdWorker.nextId("order");
-        // 6.2 user ID
-        Long userId = UserHolder.getUser().getId();
-        // 6.3 voucher ID
-
         VoucherOrder voucherOrder = VoucherOrder.builder()
                 .id(orderId)
                 .userId(userId)
@@ -74,7 +80,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 .build();
         save(voucherOrder);
 
-        // 7. return orderId
+        // 8. return orderId
         return Result.ok(orderId);
     }
 }

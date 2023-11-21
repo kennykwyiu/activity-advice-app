@@ -48,7 +48,7 @@ public class BlogController {
                 .setSql("liked = liked + 1").eq("id", id).update();
         return Result.ok();
     }
-
+    
     @GetMapping("/of/me")
     public Result queryMyBlog(@RequestParam(value = "current", defaultValue = "1") Integer current) {
         // 获取登录用户
